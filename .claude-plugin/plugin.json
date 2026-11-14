@@ -1,11 +1,11 @@
 {
   "name": "hybrid-agents",
-  "description": "Hybrid Agent Orchestrator: routes work by task type between Claude, Codex CLI, Antigravity (agy) and local Herdr sessions. The agent that invokes the skill is the orchestrator.",
+  "description": "Hybrid Agent Orchestrator: you pick the main agent and which agent leads coding, prose, design, bulk and review work across Claude, Codex CLI, Antigravity (agy) and Copilot CLI; it can hand work to agents that are already running instead of starting new sessions.",
   "author": {
     "name": "K2YOUNG"
   },
   "homepage": "https://github.com/K2YOUNG/hybrid-agents-plugin",
   "repository": "https://github.com/K2YOUNG/hybrid-agents-plugin",
   "license": "MIT",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

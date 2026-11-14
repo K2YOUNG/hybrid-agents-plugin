@@ -1,6 +1,6 @@
 ---
 name: hybrid-agent-orchestrator
-description: Orchestration that routes work by task type between Claude, Codex CLI, Antigravity (agy), and local Herdr sessions. The agent that invokes the skill is the orchestrator; coding is always led by Claude. Prose (papers, reports, docs) is written by agy or Codex while Claude supplies facts; figures and pages (.svg, .html, plots) are designed by Codex; bulk reading and boilerplate go to agy/Codex to save the orchestrator's tokens. Includes a transport ladder (native same-provider messaging, herdr, one-shot CLI, shared-markdown mailbox). Accepts English and Korean requests.
+description: Orchestration that routes work by task type between Claude, Codex CLI, Antigravity (agy), Copilot CLI, and local Herdr sessions. At the first run the user picks the main agent and which agent leads each job (coding, prose, design, bulk, review); the defaults are Claude for coding, agy or Codex for prose, Codex for figures and pages, agy for bulk work. Before delegating, it can hand work to agents that are already running (the user picks one) instead of starting a new session. Includes a transport ladder (native same-provider messaging, herdr, one-shot CLI, shared-markdown mailbox). Accepts English and Korean requests.
 license: MIT
 metadata:
   category: developer-tooling
@@ -8,26 +8,41 @@ metadata:
 
 # Hybrid Agent Orchestrator
 
-**The agent that invoked this skill is the orchestrator** (Claude, Codex or agy). It owns requirements, the plan, routing, integration, and final verification, and it does not spend its own tokens on work another agent is assigned below. **Coding is the one exception: Claude is always the main coder**, whoever orchestrates; a Codex or agy orchestrator hands coding components to Claude (`claude -p`, herdr, or the mailbox) and verifies the result.
+**The main agent is the orchestrator.** It owns requirements, the plan, routing, integration, and final verification, and it does not spend its own tokens on work another agent is assigned. Who the main agent is, and which agent leads each kind of job, is the user's choice (section 0); the defaults are the invoking agent as main and **Claude as the coder**.
 
-In the rest of this file, "Claude" in the role columns means "the orchestrator" except for coding rows. English and Korean requests are equivalent; answer in the user's language.
+In the rest of this file, "Claude" in the orchestrator columns means "the main agent", and each named lead is the default for that role. English and Korean requests are equivalent; answer in the user's language.
 
 **Bulk work** means high-volume, low-judgment work where the output is easy to check and the tokens spent mostly go to reading or typing, not thinking: summarizing long logs, PDFs or result files into a digest; sweeping a repo for every call site; generating many similar files, tests, or table rows; mechanical renames and migrations; reformatting data. It is what you delegate to save the orchestrator's context.
 
+## 0. Setup: main agent and roles (first run, or when the user asks to change them)
+
+Run `python3 "${CLAUDE_SKILL_DIR}/scripts/roles.py" show` at the start of every run.
+
+- `"configured": false` → before any other work, ask the user (one question per item, in their language; use a multiple-choice tool such as AskUserQuestion if you have one, otherwise a short numbered list, and wait for the answer):
+  1. **Main agent** (orchestrator): `invoker` (whichever agent runs this skill; default), `claude`, `codex`, `agy` or `copilot`.
+  2. **Lead per job**, each `claude`, `codex`, `agy` or `copilot`: `coding` (default claude), `prose` (default agy), `design` = figures and pages (default codex), `bulk` = token-heavy mechanical work (default agy), `review` = second-opinion review (default codex).
+  3. **Existing agents**: `ask` (default: list running agents and let the user pick one or a new session, section 3) or `new` (always start new sessions).
+  Offer "keep the defaults" as a one-step answer. Save with `roles.py init --main … --coding … --prose … --design … --bulk … --review … --reuse ask|new`, then show the saved table.
+- `"configured": true` → use it silently. Change it only when the user asks (`roles.py set coding=codex`, or `roles.py reset` to be asked again).
+- If `main` names an agent other than the one running now, say so and ask: run this request here anyway, or hand the whole request to the main agent (sections 3 and 4) and stop.
+- A choice the user states in the current request ("let Codex write this") overrides the saved roles for that request only.
+
 ## 1. Route by task type first
+
+The **Lead** column shows the defaults. The saved roles replace them: coding → `coding`, prose → `prose`, figures and pages → `design`, token-heavy mechanical work → `bulk`, second-opinion review → `review`. If a role is the main agent itself, the main agent does that job directly (e.g. `prose = claude` with a Claude orchestrator means Claude writes the text, and writer mode below does not apply).
 
 | Task type | Lead (writes the artifact) | Claude's role | Support |
 |---|---|---|---|
 | Paper sections, reports, rebuttals, READMEs, emails, any prose | **agy `pro`** (long-form, grounded) or **Codex** (tight technical prose); pick one per document and keep it | Information provider: brief, fact pack, answers to `NEED:` requests, fact-check of the draft | agy `flash` for literature digests |
 | Figures and pages: `.svg`, `.html`, slide/diagram layouts, matplotlib/plotly styling | **Codex** (main designer) | Supplies implementation details, experiment numbers with source paths, paper summaries, exact labels | agy `flash` fetches or summarizes source material Codex asks for |
-| Coding of any size: architecture, multi-file changes, bugs, scripts, experiments code | **Claude** (always, even when Codex or agy orchestrates) | Owner | Codex for a second-opinion review; agy `flash` for tests and boilerplate |
+| Coding of any size: architecture, multi-file changes, bugs, scripts, experiments code | **Claude** (the `coding` role; it stays the coder even when another agent orchestrates) | Owner | `review` role (default Codex) for a second opinion; `bulk` role for tests and boilerplate |
 | Token-heavy mechanical work: scaffolding, test generation, migrations, long-log or long-PDF summaries, repo sweeps | **agy `flash`** (deterministic bulk) or **Codex** | Writes the contract, verifies the digest and diff | — |
 
-The user's explicit choice of agent overrides this table. If the lead agent is unavailable (quota, auth, repeated timeout), fall back in this order: prose agy → Codex → Claude (say so); design Codex → agy `pro` → Claude (say so); bulk agy `flash` → Codex → Claude.
+If the lead agent is unavailable (quota, auth, repeated timeout), fall back in this order: prose agy → Codex → Claude (say so); design Codex → agy `pro` → Claude (say so); bulk agy `flash` → Codex → Claude.
 
-### Writer mode (prose): Claude never drafts the text
+### Writer mode (prose): the orchestrator never drafts the text
 
-Claude must not write the paragraphs itself, even "just a first pass". It instead:
+Applies when the `prose` role is another agent. Claude must not write the paragraphs itself, even "just a first pass". It instead:
 
 1. Writes a **brief** (`brief.md` in the thread dir or the mailbox): audience, venue and page budget, the one claim each section must make, the outline if the user approved one, tone samples (point at existing sections rather than pasting them), terms to define, banned claims.
 2. Writes a **fact pack**: every number, name and citation the writer may use, each with its source file and field (e.g. `0.672 — results/<run>.json: success_rate`). Numbers come from files read in this run, never from memory or chat. Caveats (pending fixes, non-significant results, cross-box pairs) travel with the number.
@@ -35,7 +50,7 @@ Claude must not write the paragraphs itself, even "just a first pass". It instea
 4. Reviews the draft for **facts only**: every number against the pack, every citation against the bib, every claim against the evidence. Claude returns a numbered correction list; the writer applies it. Claude does not rewrite style.
 5. Pushing to Overleaf/git still follows the user's approval rule.
 
-### Designer mode (figures, pages): Codex leads
+### Designer mode (figures, pages): the `design` role leads (default Codex)
 
 1. Claude sends Codex the data (CSV/JSON path, or a fact table), the message the figure must carry, the target (paper column width in pt, slide 1920x1080, light/dark), fonts and palette if the project has them, and where the output goes.
 2. Codex owns layout, typography, color, and code. When it lacks information it asks (`NEED:`); Claude answers with sourced facts or dispatches agy `flash` to dig them out.
@@ -53,9 +68,21 @@ Claude must not write the paragraphs itself, even "just a first pass". It instea
 
 Break-even: a delegation costs a contract + a digest + a verification. Skip it for tasks Claude can finish in a few short tool calls.
 
-## 3. Communication: the transport ladder
+## 3. Existing agent or new session
 
-Pick the first rung that works; drop a rung after two failures of the same kind.
+Decide this per target agent type, once per run, before the first delegation to it.
+
+1. **New session without asking** when the saved `reuse` is `new`, when the user said to use new sessions for this request, or when nothing suitable is running.
+2. Otherwise **discover running agents** of the role's platform: `python3 "${CLAUDE_SKILL_DIR}/scripts/list_agents.py" --platform <claude|codex|agy|copilot>` (Herdr app `hc` terminals and herdr panes; it skips tools that are not installed and leaves out your own terminal). A Claude orchestrator also checks `ListAgents` for Claude sessions over Remote Control.
+3. **Ask the user which one to use**: list each candidate with its label, machine/path, status and working dir, plus "Start a new session". One question per platform per run; reuse the answer for every later component of this run. Do not save it: addresses change when agents restart.
+4. Only hand work to an agent that is `idle` or `done`. If the chosen one is `working` or `blocked`, tell the user and offer to wait, pick another, or start a new session. Never type into an agent's unsent draft.
+5. **Talk to the chosen agent on its own channel**: the `send` / `wait` / `read` commands that `list_agents.py` prints for it (`hc send` → `hc wait` → `hc read`, or `herdr agent prompt` → `herdr agent wait` → `herdr agent read`), or `SendMessage` for a Claude session. Every message is a delegation contract (section 4).
+6. An existing agent keeps its own context, settings and permission rules. State what is new rather than assuming it knows the task; tell it where to put results. It may decline instructions relayed from another agent and want the user to confirm in its own window: if so, tell the user, do not argue.
+7. A remote agent (an `hc` address like `machine/t7`) works on that machine's files. Send content or paths that exist there, and get results back through its screen or its messages, not through local files.
+
+## 4. Communication: the transport ladder
+
+For an existing agent chosen in section 3, use its own channel. For a new session, pick the first rung below that works; drop a rung after two failures of the same kind.
 
 **Same provider — use the provider's own channel.**
 - Claude ↔ Claude: `ListAgents` + `SendMessage` (cross-session, including Remote Control sessions). Copy the incoming `from` as `to` when replying. Subagents: the Agent tool.
@@ -68,13 +95,14 @@ Pick the first rung that works; drop a rung after two failures of the same kind.
    - agy: the wrapper `bash "${CLAUDE_SKILL_DIR}/scripts/agy-delegate.sh" --tier flash|pro --dir <repo> --timeout 600 --digest "<task>"` (or plain `agy -p "<task>" --output-format json`).
    - Codex: `python3 "${CLAUDE_SKILL_DIR}/scripts/codex_bridge.py" --cd <repo> --PROMPT "<task>" --sandbox read-only` (wraps `codex exec --json`; Codex has no `-p` for prompts — `-p` is a config profile).
    - Claude (from Codex/agy): `claude -p "<task>" --output-format json`.
+   - Copilot: `copilot -p "<task>" -s` (add `--allow-all-tools` only if the user allows it).
 3. **Shared-markdown mailbox** when both of the above are impossible or keep erroring:
    `python3 "${CLAUDE_SKILL_DIR}/scripts/mailbox.py" post --thread <topic> --from claude --to codex --kind request --body-file req.md`
    The other agent reads with `mailbox.py read --thread <topic> --to codex --open` (or opens `~/.config/herdr-mgr/mailbox/<topic>.md` directly), appends `need`/`result` messages, and closes handled ids. Tell the other agent the file path once, over any channel (or the user relays it).
 
 Every message, on every rung, is a **delegation contract**: objective; exact files/dirs; constraints; acceptance criteria; output format (ask for a `===DIGEST===` block: changed files, decisions, assumptions, open `NEED:`s); what to report back. Never rely on `@path` attachments across sessions: send the text or a path.
 
-## 4. Operating agy (lessons from past sessions)
+## 5. Operating agy (lessons from past sessions)
 
 - Always use the wrapper with `--dir <repo>` so agy reads real files instead of pasted context; add `--digest` for any read/summarize task. A "looks like a raw dump" warning means re-run with `--digest`; do not ingest the dump.
 - **Writes need a grant.** Exit 15 / `denied_actions` = agy's write was refused. Fix with a narrow `write_file(<dir>)` rule in `~/.gemini/antigravity-cli/settings.json` `permissions.allow`; use `--yolo` only for web search/terminal tools, and only on a dedicated branch. Check `git status` afterwards: a "done" with no diff is a failure.
@@ -82,11 +110,11 @@ Every message, on every rung, is a **delegation contract**: objective; exact fil
 - agy drafts contain confident factual errors (a delegated appendix shipped a wrong example and wrong constraints). Every agy-written number, example and citation is checked by Claude against files before it is used.
 - When agy or Codex is itself the object of an experiment (a baseline), run it from an empty directory with tools disallowed, so project memory and the grader are not reachable.
 
-## 5. Operating Codex
+## 6. Operating Codex
 
 `python3 "${CLAUDE_SKILL_DIR}/scripts/codex_bridge.py" --cd <repo> --PROMPT "<task>" --sandbox read-only|workspace-write [--image fig.png] [--SESSION_ID <id>]` returns `success`, `SESSION_ID`, `agent_messages`. Save `SESSION_ID` for follow-ups (design iterations should stay in one session); add `--return-all-messages` only when the full event trace is needed. Use `workspace-write` only for approved edits; pass `--image` to show Codex the current render or a reference figure. Do not pass `--model`, `--profile`, or bypass flags unless the user asks. Claude reviews the filesystem diff and the rendered output.
 
-## 6. Local Herdr transport
+## 7. Local Herdr transport
 
 Reuse an existing pane by stable label; inspect before sending:
 
@@ -99,15 +127,15 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/herdr_sync.py" wait <agent> 600
 
 `herdr_sync.py` also handles topology discovery, idempotent revival, permission pending/approve/deny/dismiss, dry-run/live modes, idle nudging and decision logs; state lives in `~/.config/herdr-mgr/` (or `$HERDR_MGR_HOME`). The companion scripts `herdr-act.sh` and `attach-herdr-agent.sh` provide safe action wrapping and attach behavior. Address panes by label, never by unstable pane IDs. Configure `remotes: []`. Read the policy before judging prompts, start in `dryrun`, auto-approve only the plain "Yes" in explicitly enabled live mode, escalate anything uncertain, never auto-deny.
 
-## 7. Migrating a Claude skill for agy
+## 8. Migrating a Claude skill for agy
 
 Keep the Claude skill as the source of truth. Run the read-only planner first (`python3 "${CLAUDE_SKILL_DIR}/scripts/agy-migrate.py" --help`), review its plan, then apply. It preserves the upstream safeguards for absolute paths, trigger-compatible rules, project binding, non-destructive manifests, and unsupported hooks/tools. Test the migrated skill through agy (preferably in a herdr pane) and verify in Claude.
 
-## 8. Verification is Claude's job, always
+## 9. Verification is the main agent's job, always
 
 - Code: inspect the diff, run the tests or a real acceptance check. Never accept a success message as proof (agy has been seen patching its own environment to force a pass).
 - Prose: fact-check against the fact pack and source files; return corrections, do not rewrite.
 - Figures/pages: render and look; check every number and label against the data.
 - Report outcomes faithfully to the user: who wrote what, what was verified, what was not.
 
-Reference copies of the upstream approaches: `references/antigravity-upstream.md`, `references/herdr-upstream.md`, `references/codex-upstream.md`. Scripts: `agy-delegate.sh` (bash), `codex_bridge.py`, `herdr_sync.py`, `mailbox.py`, `agy-migrate.py`, `measure-session.py`.
+Reference copies of the upstream approaches: `references/antigravity-upstream.md`, `references/herdr-upstream.md`, `references/codex-upstream.md`. Scripts: `roles.py` (saved roles), `list_agents.py` (running agents), `agy-delegate.sh` (bash), `codex_bridge.py`, `herdr_sync.py`, `mailbox.py`, `agy-migrate.py`, `measure-session.py`.
