@@ -1,0 +1,14 @@
+{
+  "name": "hybrid-agents",
+  "description": "Hybrid Agent Orchestrator: routes work by task type between Claude, Codex CLI, Antigravity (agy) and local Herdr sessions.",
+  "owner": {
+    "name": "K2YOUNG"
+  },
+  "plugins": [
+    {
+      "name": "hybrid-agents",
+      "source": ".",
+      "description": "Orchestration skill that routes work between Claude, Codex CLI, Antigravity (agy) and Herdr sessions. Skill: /hybrid-agents:hybrid-agent-orchestrator"
+    }
+  ]
+}
