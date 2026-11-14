@@ -5,6 +5,8 @@ the orchestrator and routes work by task type between Claude, Codex CLI, Antigra
 [Herdr](https://herdr.dev) sessions: prose to agy or Codex, figures and pages to Codex, coding to Claude,
 token-heavy mechanical work to agy `flash`. English and Korean requests are both supported.
 
+New here? Read the step-by-step guide: [English](GUIDE.md) · [한국어](GUIDE.ko.md)
+
 ## Install
 
 ```
