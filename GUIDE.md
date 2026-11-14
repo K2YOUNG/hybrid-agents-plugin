@@ -2,6 +2,32 @@
 
 This plugin has one skill, `hybrid-agent-orchestrator`. When you call it in Claude Code, a main agent splits the work. It hands coding, writing, figures and repetitive jobs to the agents you chose for them (Claude, Codex, agy, Copilot), then checks the results itself.
 
+## Let an agent set it up for you
+
+Paste this into Claude Code (or another coding agent):
+
+```
+Follow https://github.com/K2YOUNG/hybrid-agents-plugin/blob/main/GUIDE.md to install and set up the hybrid-agents plugin for me. Run the commands yourself, and stop and tell me whenever I need to do something.
+```
+
+## For AI agents helping a user
+
+If a user gave you this guide, set the plugin up for them in this order:
+
+1. Run the `--version` checks under "What you need". Tell the user which agent CLIs are missing. Don't install them unless the user asks.
+2. Run the two commands in Step 1, then `claude plugin list` (Step 2) to confirm `hybrid-agents` is installed.
+3. Stop. Ask the user to quit Claude Code and start it again from the same folder with `claude -c`. That reopens this conversation with the plugin loaded. You can't restart your own session.
+4. After the restart, suggest a first request such as `/hybrid-agents:hybrid-agent-orchestrator <task>`. The skill asks its setup questions itself. Let the user answer them; don't choose for the user.
+
+Hand these back to the user and wait:
+
+- logging in to Codex, agy or Copilot (these are interactive)
+- the restart in step 3
+- the setup questions in step 4
+- confirming in another agent's own window, when that agent refuses a task passed on by you
+
+Never type a password or token for the user.
+
 ## What you need
 
 - Claude Code, installed and logged in

@@ -7,6 +7,12 @@ token-heavy mechanical work to agy `flash`. English and Korean requests are both
 
 New here? Read the step-by-step guide: [English](GUIDE.md) · [한국어](GUIDE.ko.md)
 
+Or let your coding agent do it. Paste this into Claude Code:
+
+```
+Follow https://github.com/K2YOUNG/hybrid-agents-plugin/blob/main/GUIDE.md to install and set up the hybrid-agents plugin for me. Run the commands yourself, and stop and tell me whenever I need to do something.
+```
+
 ## Install
 
 ```
